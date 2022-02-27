@@ -59,12 +59,6 @@ class Model:
                 self.layers[i].next = self.loss
                 self.output_layer_activation = self.layers[i]
 
-
-            # If layer contains an attribute called "weights",
-            # it's a trainable layer -
-            # add it to the list of trainable layers
-            # We don't need to check for biases -
-            # checking for weights is enough
             if hasattr(self.layers[i], 'weights'):
                 self.trainable_layers.append(self.layers[i])
 
@@ -74,15 +68,9 @@ class Model:
                 self.trainable_layers
             )
 
-        # If output activation is Softmax and
-        # loss function is Categorical Cross-Entropy
-        # create an object of combined activation
-        # and loss function containing
-        # faster gradient calculation
         if isinstance(self.layers[-1], Activation_Softmax) and \
            isinstance(self.loss, Loss_CategoricalCrossentropy):
-            # Create an object of combined activation
-            # and loss functions
+            # Create an object of combined activation  and loss functions
             self.softmax_classifier_output = \
                 Activation_Softmax_Loss_CategoricalCrossentropy()
 
@@ -134,10 +122,10 @@ class Model:
                 output = self.forward(batch_X, training=True)
 
                 # Calculate loss
-                data_loss, regularization_loss = \
+                data_loss = \
                     self.loss.calculate(output, batch_y,
-                                        include_regularization=True)
-                loss = data_loss + regularization_loss
+                                        )
+                loss = data_loss
 
                 # Get predictions and calculate an accuracy
                 predictions = self.output_layer_activation.predictions(
@@ -147,9 +135,6 @@ class Model:
 
                 # Perform backward pass
                 self.backward(output, batch_y)
-
-                # Optimize (update parameters)
-                self.optimizer.pre_update_params()
                 for layer in self.trainable_layers:
                     self.optimizer.update_params(layer)
                 self.optimizer.post_update_params()
@@ -157,33 +142,20 @@ class Model:
 
                 # Print a summary
                 if not step % print_every or step == train_steps - 1:
-                    print(f'step: {step}, ' +
-                          f'acc: {accuracy:.3f}, ' +
-                          f'loss: {loss:.3f} (' +
-                          f'data_loss: {data_loss:.3f}, ' +
-                          f'reg_loss: {regularization_loss:.3f}), ' +
-                          f'lr: {self.optimizer.current_learning_rate}')
+                    print(f'accuracy: {accuracy:.3f}')
 
             # Get and print epoch loss and accuracy
-            epoch_data_loss, epoch_regularization_loss = \
+            epoch_data_loss = \
                 self.loss.calculate_accumulated(
                     include_regularization=True)
-            epoch_loss = epoch_data_loss + epoch_regularization_loss
+            epoch_loss = epoch_data_loss
             epoch_accuracy = self.accuracy.calculate_accumulated()
 
             print(f'training, ' +
                   f'acc: {epoch_accuracy:.3f}, ' +
                   f'loss: {epoch_loss:.3f} (' +
                   f'data_loss: {epoch_data_loss:.3f}, ' +
-                  f'reg_loss: {epoch_regularization_loss:.3f}), ' +
-                  f'lr: {self.optimizer.current_learning_rate}')
-
-            # # If there is the validation data
-            # if validation_data is not None:
-
-            #     # Evaluate the model:
-            #     self.evaluate(*validation_data,
-            #                   batch_size=batch_size)
+                  f'lr: {self.optimizer.current_learning_rate})')
 
    
 
@@ -230,13 +202,8 @@ class Model:
     # Performs forward pass
     def forward(self, X, training):
 
-        # Call forward method on the input layer
-        # this will set the output property that
-        # the first layer in "prev" object is expecting
+       
         self.input_layer.forward(X, training)
-
-        # Call forward method of every object in a chain
-        # Pass output of the previous object as a parameter
         for layer in self.layers:
             layer.forward(layer.prev.output, training)
 
@@ -254,11 +221,6 @@ class Model:
             # on the combined activation/loss
             # this will set dinputs property
             self.softmax_classifier_output.backward(output, y)
-
-            # Since we'll not call backward method of the last layer
-            # which is Softmax activation
-            # as we used combined activation/loss
-            # object, let's set dinputs in this object
             self.layers[-1].dinputs = \
                 self.softmax_classifier_output.dinputs
 
@@ -280,7 +242,6 @@ class Model:
         for layer in reversed(self.layers):
             layer.backward(layer.next.dinputs)
 
-    # Retrieves and returns parameters of trainable layers
     def get_parameters(self):
 
         # Create a list for parameters
@@ -294,11 +255,8 @@ class Model:
         return parameters
 
 
-    # Updates the model with new parameters
     def set_parameters(self, parameters):
 
-        # Iterate over the parameters and layers
-        # and update each layers with each set of the parameters
         for parameter_set, layer in zip(parameters,
                                         self.trainable_layers):
             layer.set_parameters(*parameter_set)
@@ -306,50 +264,41 @@ class Model:
     # Saves the parameters to a file
     def save_parameters(self, path):
 
-        # Open a file in the binary-write mode
-        # and save parameters into it
         with open(path, 'wb') as f:
             pickle.dump(self.get_parameters(), f)
 
-    # Loads the weights and updates a model instance with them
     def load_parameters(self, path):
 
-        # Open file in the binary-read mode,
         # load weights and update trainable layers
         with open(path, 'rb') as f:
             self.set_parameters(pickle.load(f))
 
-    # Saves the model
+ 
     def save(self, path):
 
         # Make a deep copy of current model instance
         model = copy.deepcopy(self)
-
-        # Reset accumulated values in loss and accuracy objects
         model.loss.new_pass()
         model.accuracy.new_pass()
-
-        # Remove data from the input layer
-        # and gradients from the loss object
         model.input_layer.__dict__.pop('output', None)
         model.loss.__dict__.pop('dinputs', None)
 
-        # For each layer remove inputs, output and dinputs properties
+    
         for layer in model.layers:
             for property in ['inputs', 'output', 'dinputs',
                              'dweights', 'dbiases']:
                 layer.__dict__.pop(property, None)
 
-        # Open a file in the binary-write mode and save the model
+        
         with open(path, 'wb') as f:
             pickle.dump(model, f)
 
 
-    # Loads and returns a model
+    
     @staticmethod
     def load(path):
 
-        # Open file in the binary-read mode, load a model
+        
         with open(path, 'rb') as f:
             model = pickle.load(f)
 
